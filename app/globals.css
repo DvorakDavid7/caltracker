@@ -152,3 +152,35 @@ button { font: inherit; cursor: pointer; }
 .sheet-actions button:disabled { opacity: 0.5; cursor: default; }
 
 @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* Top bar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: -8px 0 16px; font-size: 14px; color: var(--muted);
+}
+.topbar-user { font-weight: 600; color: var(--text); }
+.topbar-logout {
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  padding: 6px 12px; border-radius: 8px; font-size: 14px;
+}
+.topbar-logout:hover { color: var(--text); }
+
+/* Login / register */
+.screen.auth { display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
+.auth-brand { text-align: center; font-size: 28px; margin: 0 0 24px; }
+.auth-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px 20px; display: flex; flex-direction: column; gap: 14px;
+}
+.auth-card h2 { margin: 0 0 4px; font-size: 20px; }
+.auth-card label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+.auth-card input {
+  font: inherit; font-size: 16px; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+}
+.auth-card input:focus { outline: 2px solid var(--protein); outline-offset: -1px; }
+.auth-hint { margin: -6px 0 0; font-size: 13px; color: var(--muted); }
+.auth-submit { padding: 13px; border-radius: 10px; font-weight: 600; margin-top: 4px; }
+.auth-submit:disabled { opacity: 0.5; cursor: default; }
+.auth-switch { margin: 4px 0 0; text-align: center; font-size: 14px; color: var(--muted); }
+.auth-switch a { color: var(--protein); font-weight: 600; text-decoration: none; }
