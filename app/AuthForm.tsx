@@ -27,6 +27,7 @@ const COPY = {
 export default function AuthForm({ mode }: { mode: Mode }) {
   const t = COPY[mode];
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +46,11 @@ export default function AuthForm({ mode }: { mode: Mode }) {
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify(
+          mode === "register"
+            ? { username: username.trim(), email: email.trim(), password }
+            : { username: username.trim(), password }
+        ),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -82,6 +87,24 @@ export default function AuthForm({ mode }: { mode: Mode }) {
           />
         </label>
 
+        {mode === "register" && (
+          <label>
+            E-mail
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              maxLength={254}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+        )}
+
         <label>
           Heslo
           <input
@@ -112,7 +135,7 @@ export default function AuthForm({ mode }: { mode: Mode }) {
           </label>
         )}
 
-        {mode === "register" && <p className="auth-hint">Alespoň 8 znaků.</p>}
+        {mode === "register" && <p className="auth-hint">Heslo alespoň 8 znaků. Registrace je jen pro povolené e-maily.</p>}
         {error && <p className="error inline" role="alert">{error}</p>}
 
         <button type="submit" className="primary auth-submit" disabled={busy}>

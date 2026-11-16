@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
-import { clientIp, hashPassword, rateLimited, startSession, validateCredentials } from "@/lib/auth";
+import {
+  clientIp,
+  hashPassword,
+  isEmailAllowed,
+  normalizeEmail,
+  rateLimited,
+  startSession,
+  validateCredentials,
+} from "@/lib/auth";
 import { createUser } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -10,12 +18,24 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => null);
+  const email = normalizeEmail(body?.email);
+  if (!email) return NextResponse.json({ error: "Zadej platný e-mail" }, { status: 400 });
+
   const error = validateCredentials(body?.username, body?.password);
   if (error) return NextResponse.json({ error }, { status: 400 });
 
-  const user = createUser(body.username, await hashPassword(body.password));
-  if (!user) return NextResponse.json({ error: "Toto uživatelské jméno je obsazené" }, { status: 409 });
+  if (!isEmailAllowed(email)) {
+    return NextResponse.json({ error: "Registrace pro tento e-mail není povolená" }, { status: 403 });
+  }
 
-  await startSession(user.id);
-  return NextResponse.json({ user }, { status: 201 });
+  const result = createUser(body.username, email, await hashPassword(body.password));
+  if (result === "username_taken") {
+    return NextResponse.json({ error: "Toto uživatelské jméno je obsazené" }, { status: 409 });
+  }
+  if (result === "email_taken") {
+    return NextResponse.json({ error: "Účet s tímto e-mailem už existuje" }, { status: 409 });
+  }
+
+  await startSession(result.id);
+  return NextResponse.json({ user: result }, { status: 201 });
 }

@@ -61,6 +61,13 @@ function migrate(db: DatabaseSync) {
     DROP INDEX IF EXISTS meals_date_idx;
     CREATE INDEX IF NOT EXISTS meals_user_date_idx ON meals(user_id, date);
   `);
+
+  // Email was added after the first accounts; older users may have none.
+  const userCols = db.prepare(`PRAGMA table_info(users)`).all() as { name: string }[];
+  if (!userCols.some((c) => c.name === "email")) {
+    db.exec(`ALTER TABLE users ADD COLUMN email TEXT COLLATE NOCASE`);
+  }
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL`);
 }
 
 export function getDb(): DatabaseSync {
@@ -109,19 +116,26 @@ export function findUserByUsername(username: string): (User & { passwordHash: st
 /**
  * Creates a user. The very first account also takes over meals logged
  * before accounts existed, so earlier data isn't lost.
- * Returns undefined if the username is taken.
  */
-export function createUser(username: string, passwordHash: string): User | undefined {
+export function createUser(
+  username: string,
+  email: string,
+  passwordHash: string
+): User | "username_taken" | "email_taken" {
   const db = getDb();
   db.exec("BEGIN IMMEDIATE");
   try {
     if (db.prepare(`SELECT 1 FROM users WHERE username = ?`).get(username)) {
       db.exec("ROLLBACK");
-      return undefined;
+      return "username_taken";
+    }
+    if (db.prepare(`SELECT 1 FROM users WHERE email = ?`).get(email)) {
+      db.exec("ROLLBACK");
+      return "email_taken";
     }
     const res = db
-      .prepare(`INSERT INTO users (username, password_hash) VALUES (?, ?)`)
-      .run(username, passwordHash);
+      .prepare(`INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`)
+      .run(username, email, passwordHash);
     const id = Number(res.lastInsertRowid);
     const { n } = db.prepare(`SELECT COUNT(*) AS n FROM users`).get() as { n: number };
     if (n === 1) db.prepare(`UPDATE meals SET user_id = ? WHERE user_id IS NULL`).run(id);

@@ -51,6 +51,24 @@ export function validateCredentials(username: unknown, password: unknown): strin
   return null;
 }
 
+export function normalizeEmail(email: unknown): string | null {
+  if (typeof email !== "string") return null;
+  const e = email.trim().toLowerCase();
+  return e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
+}
+
+/**
+ * Registration whitelist from ALLOWED_EMAILS (comma or whitespace separated).
+ * If it's empty or unset, nobody can register.
+ */
+export function isEmailAllowed(email: string): boolean {
+  const allowed = (process.env.ALLOWED_EMAILS ?? "")
+    .split(/[\s,;]+/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes(email);
+}
+
 // ---- sessions ----
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
