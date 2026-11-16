@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_GRAMS, sumItems, type MealItemInput, type Totals } from "./items";
 
 // Shape the model must return. Kept free of min/max constraints so it maps
 // cleanly onto each provider's structured-output JSON schema support.
@@ -20,7 +21,7 @@ export const NutritionSchema = z.object({
   ),
 });
 
-export type Nutrition = { name: string; kcal: number; protein: number; fat: number; carbs: number };
+export type Nutrition = Totals & { name: string; items: MealItemInput[] };
 
 export const SYSTEM_PROMPT = `You are a precise nutrition analyst. The user describes a meal, usually in Czech, sometimes with quantities. Estimate its nutritional content as accurately as possible.
 
@@ -62,16 +63,23 @@ export async function estimateNutrition(description: string): Promise<Nutrition>
 
   const n = NutritionSchema.parse(raw);
   if (!n.name.trim()) throw new Error("AI nevrátila název jídla");
-  if (n.items.length === 0) throw new Error("AI nerozpoznala žádné ingredience");
 
-  const sum = (key: "kcal" | "protein" | "fat" | "carbs") =>
-    Math.max(0, Math.round(n.items.reduce((s, i) => s + Math.max(0, i[key]), 0)));
+  // Convert to per-100 g values so the user can later change the weight.
+  const items: MealItemInput[] = n.items
+    .filter((i) => i.grams > 0 && i.food.trim())
+    .map((i) => {
+      const grams = Math.min(MAX_GRAMS, Math.round(i.grams));
+      const per100 = (v: number) => Math.round((Math.max(0, v) / i.grams) * 100 * 10) / 10;
+      return {
+        food: i.food.trim(),
+        grams,
+        kcal100: per100(i.kcal),
+        protein100: per100(i.protein),
+        fat100: per100(i.fat),
+        carbs100: per100(i.carbs),
+      };
+    });
+  if (items.length === 0) throw new Error("AI nerozpoznala žádné ingredience");
 
-  return {
-    name: n.name.trim(),
-    kcal: sum("kcal"),
-    protein: sum("protein"),
-    fat: sum("fat"),
-    carbs: sum("carbs"),
-  };
+  return { name: n.name.trim(), items, ...sumItems(items) };
 }

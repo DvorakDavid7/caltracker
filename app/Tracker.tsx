@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MealItem } from "@/lib/items";
 import MacroRing from "./MacroRing";
+import MealDetail from "./MealDetail";
 
 type Meal = {
   id: number;
@@ -11,6 +13,7 @@ type Meal = {
   protein: number;
   fat: number;
   carbs: number;
+  items: MealItem[];
 };
 
 function localDate(): string {
@@ -35,6 +38,7 @@ export default function Tracker({ username }: { username: string }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async (d: string) => {
@@ -147,15 +151,34 @@ export default function Tracker({ username }: { username: string }) {
           <p className="empty">Zatím žádné jídlo. Přidej první tlačítkem +.</p>
         ) : (
           <ul>
-            {meals.map((m) => (
-              <li key={m.id} className="meal" title={m.description}>
-                <span className="meal-name">{m.name}</span>
-                <span className="meal-kcal">{m.kcal} kcal</span>
-                <button className="meal-delete" aria-label={`Smazat ${m.name}`} onClick={() => remove(m)}>
-                  ×
-                </button>
-              </li>
-            ))}
+            {meals.map((m) => {
+              const open = openId === m.id;
+              return (
+                <li key={m.id} className={`meal-card${open ? " open" : ""}`}>
+                  <div className="meal">
+                    <button
+                      className="meal-toggle"
+                      aria-expanded={open}
+                      onClick={() => setOpenId(open ? null : m.id)}
+                    >
+                      <span className="meal-name">{m.name}</span>
+                      <span className="meal-kcal">{m.kcal} kcal</span>
+                      <span className="meal-chevron" aria-hidden>›</span>
+                    </button>
+                    <button className="meal-delete" aria-label={`Smazat ${m.name}`} onClick={() => remove(m)}>
+                      ×
+                    </button>
+                  </div>
+                  {open && (
+                    <MealDetail
+                      meal={m}
+                      onUnauthorized={handleUnauthorized}
+                      onSaved={(updated) => setMeals((all) => all.map((x) => (x.id === updated.id ? updated : x)))}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
