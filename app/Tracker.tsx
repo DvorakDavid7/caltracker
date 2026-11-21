@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MealItem } from "@/lib/items";
+import { handleUnauthorized, localDate } from "./client-utils";
 import MacroRing from "./MacroRing";
 import MealDetail from "./MealDetail";
 
@@ -15,20 +17,6 @@ type Meal = {
   carbs: number;
   items: MealItem[];
 };
-
-function localDate(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// Session expired or logged out elsewhere: go back to the login page.
-function handleUnauthorized(res: Response) {
-  if (res.status === 401) {
-    window.location.href = "/login";
-    throw new Error("Nejsi přihlášen");
-  }
-}
 
 export default function Tracker({ username }: { username: string }) {
   const [date, setDate] = useState<string>("");
@@ -128,6 +116,7 @@ export default function Tracker({ username }: { username: string }) {
     <main className="screen">
       <nav className="topbar">
         <span className="topbar-user">{username}</span>
+        <Link className="topbar-link" href="/menu">Jídelníček</Link>
         <button className="topbar-logout" onClick={logout}>Odhlásit</button>
       </nav>
       <header className="summary">

@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { sumItems, type MealItem, type MealItemInput } from "./items";
+import type { MenuPlan, MenuRequest } from "./menu-types";
 
 export type Meal = {
   id: number;
@@ -84,6 +85,17 @@ function migrate(db: DatabaseSync) {
       carbs_100 REAL NOT NULL
     );
     CREATE INDEX IF NOT EXISTS meal_items_meal_idx ON meal_items(meal_id);
+
+    CREATE TABLE IF NOT EXISTS menus (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,          -- pending | ready | error
+      request TEXT NOT NULL,         -- MenuRequest JSON
+      plan TEXT,                     -- MenuPlan JSON once ready
+      error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS menus_user_idx ON menus(user_id, id);
   `);
 }
 
@@ -91,7 +103,7 @@ function migrate(db: DatabaseSync) {
 // so migrate() only runs - and only writes to the file - when the schema is
 // actually out of date. Writing on every check made the dev server see the DB
 // file change, recompile, reload the page and check again, in an endless loop.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 // Module-level, so it resets whenever this file is reloaded. The connection
 // itself survives hot reloads (globalThis), and without this a dev server
@@ -226,6 +238,85 @@ export function updateMealItemGrams(
 /** Deletes only if the meal belongs to the user. */
 export function deleteMeal(userId: number, id: number): boolean {
   return getDb().prepare(`DELETE FROM meals WHERE id = ? AND user_id = ?`).run(id, userId).changes > 0;
+}
+
+// ---- menus ----
+
+export type MenuStatus = "pending" | "ready" | "error";
+export type Menu = {
+  id: number;
+  status: MenuStatus;
+  request: MenuRequest;
+  plan: MenuPlan | null;
+  error: string | null;
+  createdAt: string; // UTC, "YYYY-MM-DD HH:MM:SS"
+};
+
+// Generation runs in the server process. If it was restarted mid-way, the
+// menu would stay pending forever, so treat old pending ones as failed.
+const PENDING_TIMEOUT_MIN = 15;
+
+type MenuRow = { id: number; status: MenuStatus; request: string; plan: string | null; error: string | null; createdAt: string };
+
+function toMenu(r: MenuRow): Menu {
+  const stale =
+    r.status === "pending" && Date.now() - Date.parse(r.createdAt.replace(" ", "T") + "Z") > PENDING_TIMEOUT_MIN * 60_000;
+  return {
+    id: r.id,
+    status: stale ? "error" : r.status,
+    request: JSON.parse(r.request),
+    plan: r.plan ? JSON.parse(r.plan) : null,
+    error: stale ? "Sestavení se nedokončilo, zkus to znovu" : r.error,
+    createdAt: r.createdAt,
+  };
+}
+
+const SELECT_MENU = `SELECT id, status, request, plan, error, created_at AS createdAt FROM menus`;
+
+export function createMenu(userId: number, request: MenuRequest): Menu {
+  const res = getDb()
+    .prepare(`INSERT INTO menus (user_id, status, request) VALUES (?, 'pending', ?)`)
+    .run(userId, JSON.stringify(request));
+  return getMenu(userId, Number(res.lastInsertRowid))!;
+}
+
+export function finishMenu(id: number, result: { plan: MenuPlan } | { error: string }) {
+  if ("plan" in result) {
+    getDb().prepare(`UPDATE menus SET status = 'ready', plan = ?, error = NULL WHERE id = ?`).run(JSON.stringify(result.plan), id);
+  } else {
+    getDb().prepare(`UPDATE menus SET status = 'error', error = ? WHERE id = ?`).run(result.error, id);
+  }
+}
+
+export function getMenu(userId: number, id: number): Menu | undefined {
+  const row = getDb().prepare(`${SELECT_MENU} WHERE id = ? AND user_id = ?`).get(id, userId) as unknown as
+    | MenuRow
+    | undefined;
+  return row ? toMenu(row) : undefined;
+}
+
+/** Newest first, without the (large) plan body. */
+export function listMenus(userId: number, limit = 30): Omit<Menu, "plan">[] {
+  const rows = getDb()
+    .prepare(`SELECT id, status, request, NULL AS plan, error, created_at AS createdAt FROM menus WHERE user_id = ? ORDER BY id DESC LIMIT ?`)
+    .all(userId, limit) as unknown as MenuRow[];
+  return rows.map((r) => {
+    const { plan: _, ...m } = toMenu(r);
+    return m;
+  });
+}
+
+/** Menus still being generated (used to stop someone starting many at once). */
+export function countPendingMenus(userId: number): number {
+  const cutoff = new Date(Date.now() - PENDING_TIMEOUT_MIN * 60_000).toISOString().slice(0, 19).replace("T", " ");
+  const { n } = getDb()
+    .prepare(`SELECT COUNT(*) AS n FROM menus WHERE user_id = ? AND status = 'pending' AND created_at > ?`)
+    .get(userId, cutoff) as { n: number };
+  return n;
+}
+
+export function deleteMenu(userId: number, id: number): boolean {
+  return getDb().prepare(`DELETE FROM menus WHERE id = ? AND user_id = ?`).run(id, userId).changes > 0;
 }
 
 // ---- users ----
